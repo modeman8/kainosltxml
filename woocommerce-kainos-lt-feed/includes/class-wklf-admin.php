@@ -245,6 +245,10 @@ class WKLF_Admin {
 				</table>
 				<?php submit_button( esc_html__( 'Save settings', 'woocommerce-kainos-lt-feed' ) ); ?>
 			</form>
+
+			<p class="description" style="margin-top: 24px;">
+				<?php echo esc_html__( 'Developed by WebMode.lt', 'woocommerce-kainos-lt-feed' ); ?>
+			</p>
 		</div>
 		<?php
 	}
