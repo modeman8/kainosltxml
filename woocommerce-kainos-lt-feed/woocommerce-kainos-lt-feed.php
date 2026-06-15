@@ -2,9 +2,10 @@
 /**
  * Plugin Name: WooCommerce Kainos.lt Feed
  * Plugin URI: https://kainos.lt/
- * Description: Generates a Kainos.lt XML product feed for WooCommerce.
+ * Description: Generates a Kainos.lt compatible XML product feed for WooCommerce and updates it automatically every 12 hours.
  * Version: 1.0.0
- * Author: Kainos.lt Feed
+ * Author: WebMode.lt
+ * Author URI: https://webmode.lt
  * Text Domain: woocommerce-kainos-lt-feed
  * Requires at least: 5.8
  * Requires PHP: 7.4
