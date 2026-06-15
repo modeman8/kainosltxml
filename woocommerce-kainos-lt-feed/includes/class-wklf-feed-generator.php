@@ -28,12 +28,55 @@ class WKLF_Feed_Generator {
 	private $feed_file = 'products.xml';
 
 	/**
+	 * Gets default feed settings.
+	 *
+	 * @return array<string,string|int>
+	 */
+	public static function get_default_settings() {
+		return array(
+			'manufacturer_source'         => 'fixed_value',
+			'fixed_manufacturer_value'    => '',
+			'manufacturer_attribute_slug' => '',
+			'manufacturer_meta_key'       => '',
+			'delivery_time'               => 2,
+			'delivery_text'               => '0 - 2 d.d.',
+		);
+	}
+
+	/**
+	 * Gets stored feed settings with defaults.
+	 *
+	 * @return array<string,string|int>
+	 */
+	public static function get_settings() {
+		$settings = get_option( WKLF_SETTINGS_OPTION, array() );
+
+		if ( ! is_array( $settings ) ) {
+			$settings = array();
+		}
+
+		return wp_parse_args( $settings, self::get_default_settings() );
+	}
+
+	/**
+	 * Ensures the settings option exists.
+	 *
+	 * @return void
+	 */
+	public static function ensure_default_settings() {
+		if ( false === get_option( WKLF_SETTINGS_OPTION, false ) ) {
+			add_option( WKLF_SETTINGS_OPTION, self::get_default_settings(), '', false );
+		}
+	}
+
+	/**
 	 * Generates the WooCommerce products XML feed.
 	 *
 	 * @return bool True on success, false otherwise.
 	 */
 	public function generate() {
 		self::ensure_default_status();
+		self::ensure_default_settings();
 
 		$paths = $this->get_feed_paths();
 
@@ -73,7 +116,7 @@ class WKLF_Feed_Generator {
 	 * Simple products are exported directly. Variable product parents are not exported;
 	 * each published variation is exported as its own feed product instead.
 	 *
-	 * @return array<int,array<string,string|int>>
+	 * @return array<int,array<string,mixed>>
 	 */
 	private function get_export_products() {
 		$export_products = array();
@@ -110,7 +153,7 @@ class WKLF_Feed_Generator {
 	 * Gets formatted export rows for a variable product's published variations.
 	 *
 	 * @param WC_Product_Variable $product Parent variable product.
-	 * @return array<int,array<string,string|int>>
+	 * @return array<int,array<string,mixed>>
 	 */
 	private function get_variation_export_products( $product ) {
 		$export_products = array();
@@ -133,24 +176,133 @@ class WKLF_Feed_Generator {
 	 *
 	 * @param WC_Product      $product Product or variation.
 	 * @param WC_Product|null $parent  Parent product for variations.
-	 * @return array<string,string|int>
+	 * @return array<string,mixed>
 	 */
 	private function format_export_product( $product, $parent = null ) {
 		$category_product = $parent ? $parent : $product;
+		$settings         = self::get_settings();
 
 		return array(
-			'id'          => $product->get_id(),
-			'title'       => $parent ? $this->get_variation_title( $parent, $product ) : $product->get_name(),
-			'item_price'  => $product->get_price(),
-			'image_url'   => $this->get_product_image_url( $product, $parent ),
-			'product_url' => $product->get_permalink(),
-			'categories'  => implode( ', ', $this->get_category_paths( $category_product->get_id() ) ),
-			'stock'       => $product->managing_stock() ? (int) $product->get_stock_quantity() : 999,
+			'id'             => $product->get_id(),
+			'title'          => $parent ? $this->get_variation_title( $parent, $product ) : $product->get_name(),
+			'item_price'     => $this->format_price( wc_get_price_to_display( $product ) ),
+			'manufacturer'   => $this->get_manufacturer( $product, $parent ),
+			'image_url'      => $this->get_product_image_url( $product, $parent ),
+			'product_url'    => $this->get_product_url( $product, $parent ),
+			'categories'     => $this->get_category_paths( $category_product->get_id() ),
+			'description'    => $this->get_product_description( $parent ? $parent : $product ),
+			'stock'          => $this->get_stock_value( $product ),
+			'delivery_time'  => absint( $settings['delivery_time'] ),
+			'delivery_text'  => $this->trim_text( (string) $settings['delivery_text'], 22 ),
 		);
 	}
 
 	/**
-	 * Builds a variation title from parent title and selected attributes.
+	 * Formats a price with a dot decimal separator and two decimals.
+	 *
+	 * @param float|string $price Price.
+	 * @return string
+	 */
+	private function format_price( $price ) {
+		return number_format( (float) $price, 2, '.', '' );
+	}
+
+	/**
+	 * Gets manufacturer according to admin settings.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @return string
+	 */
+	private function get_manufacturer( $product, $parent = null ) {
+		$settings = self::get_settings();
+		$source   = isset( $settings['manufacturer_source'] ) ? (string) $settings['manufacturer_source'] : 'fixed_value';
+		$value    = '';
+
+		if ( 'product_attribute' === $source && ! empty( $settings['manufacturer_attribute_slug'] ) ) {
+			$value = $this->get_attribute_value( $product, $parent, (string) $settings['manufacturer_attribute_slug'] );
+		} elseif ( 'product_meta' === $source && ! empty( $settings['manufacturer_meta_key'] ) ) {
+			$value = $this->get_meta_value( $product, $parent, (string) $settings['manufacturer_meta_key'] );
+		} elseif ( ! empty( $settings['fixed_manufacturer_value'] ) ) {
+			$value = (string) $settings['fixed_manufacturer_value'];
+		}
+
+		$value = $this->plain_text( $value );
+
+		return '' !== $value ? $value : get_bloginfo( 'name' );
+	}
+
+	/**
+	 * Gets a product attribute value from product or parent.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @param string          $slug    Attribute slug.
+	 * @return string
+	 */
+	private function get_attribute_value( $product, $parent, $slug ) {
+		$slug       = wc_sanitize_taxonomy_name( str_replace( 'attribute_', '', $slug ) );
+		$candidates = array_unique( array( $slug, 'pa_' . preg_replace( '/^pa_/', '', $slug ) ) );
+
+		foreach ( array( $product, $parent ) as $target ) {
+			if ( ! $target ) {
+				continue;
+			}
+
+			foreach ( $candidates as $candidate ) {
+				$value = $target->get_attribute( $candidate );
+				if ( '' !== $value ) {
+					return $value;
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Gets product meta value from product or parent.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @param string          $meta_key Meta key.
+	 * @return string
+	 */
+	private function get_meta_value( $product, $parent, $meta_key ) {
+		foreach ( array( $product, $parent ) as $target ) {
+			if ( ! $target ) {
+				continue;
+			}
+
+			$value = get_post_meta( $target->get_id(), $meta_key, true );
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				return (string) $value;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Gets stock value according to Kainos.lt feed rules.
+	 *
+	 * @param WC_Product $product Product or variation.
+	 * @return int
+	 */
+	private function get_stock_value( $product ) {
+		if ( ! $product->is_in_stock() ) {
+			return 0;
+		}
+
+		if ( $product->managing_stock() && null !== $product->get_stock_quantity() ) {
+			return max( 0, (int) $product->get_stock_quantity() );
+		}
+
+		return 999;
+	}
+
+	/**
+	 * Builds a variation title from parent title and selected visible attribute values.
 	 *
 	 * @param WC_Product           $parent    Parent variable product.
 	 * @param WC_Product_Variation $variation Product variation.
@@ -159,14 +311,20 @@ class WKLF_Feed_Generator {
 	private function get_variation_title( $parent, $variation ) {
 		$attributes = array();
 
-		foreach ( $variation->get_attributes() as $attribute_name => $attribute_value ) {
-			$attribute_value = $variation->get_attribute( $attribute_name );
+		foreach ( $variation->get_variation_attributes() as $attribute_name => $attribute_value ) {
+			$taxonomy = str_replace( 'attribute_', '', $attribute_name );
+			$value    = $variation->get_attribute( $taxonomy );
 
-			if ( '' === $attribute_value ) {
-				continue;
+			if ( '' === $value && taxonomy_exists( $taxonomy ) ) {
+				$term = get_term_by( 'slug', $attribute_value, $taxonomy );
+				if ( $term && ! is_wp_error( $term ) ) {
+					$value = $term->name;
+				}
 			}
 
-			$attributes[] = $attribute_value;
+			if ( '' !== $value ) {
+				$attributes[] = $this->plain_text( $value );
+			}
 		}
 
 		return implode( ' - ', array_filter( array_merge( array( $parent->get_name() ), $attributes ) ) );
@@ -187,6 +345,72 @@ class WKLF_Feed_Generator {
 		}
 
 		return $image_id ? wp_get_attachment_url( $image_id ) : '';
+	}
+
+	/**
+	 * Gets product URL, including variation attributes when possible.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @return string
+	 */
+	private function get_product_url( $product, $parent = null ) {
+		if ( ! $parent ) {
+			return $product->get_permalink();
+		}
+
+		$url        = $parent->get_permalink();
+		$attributes = array_filter( $product->get_variation_attributes() );
+
+		return empty( $attributes ) ? $url : add_query_arg( $attributes, $url );
+	}
+
+	/**
+	 * Gets plain product description, preferring short description.
+	 *
+	 * @param WC_Product $product Product.
+	 * @return string
+	 */
+	private function get_product_description( $product ) {
+		$description = $product->get_short_description();
+
+		if ( '' === trim( wp_strip_all_tags( strip_shortcodes( $description ) ) ) ) {
+			$description = $product->get_description();
+		}
+
+		return $this->plain_text( $description );
+	}
+
+	/**
+	 * Converts content to UTF-8 plain text.
+	 *
+	 * @param string $value Text value.
+	 * @return string
+	 */
+	private function plain_text( $value ) {
+		$value = wp_strip_all_tags( strip_shortcodes( (string) $value ) );
+		$value = html_entity_decode( $value, ENT_QUOTES, 'UTF-8' );
+		$value = preg_replace( '/\s+/u', ' ', $value );
+		$value = is_string( $value ) ? trim( $value ) : '';
+
+		return function_exists( 'wp_check_invalid_utf8' ) ? wp_check_invalid_utf8( $value, true ) : $value;
+	}
+
+	/**
+	 * Trims text to a maximum character length.
+	 *
+	 * @param string $value  Text value.
+	 * @param int    $length Maximum length.
+	 * @return string
+	 */
+	private function trim_text( $value, $length ) {
+		$value = $this->plain_text( $value );
+
+		if ( function_exists( 'mb_substr' ) ) {
+			return mb_substr( $value, 0, $length, 'UTF-8' );
+		}
+
+		return substr( $value, 0, $length );
 	}
 
 	/**
@@ -216,7 +440,7 @@ class WKLF_Feed_Generator {
 			}
 
 			$names[] = $term->name;
-			$paths[] = implode( '/', $names );
+			$paths[] = implode( '/', array_map( array( $this, 'plain_text' ), $names ) );
 		}
 
 		return array_values( array_unique( $paths ) );
@@ -225,7 +449,7 @@ class WKLF_Feed_Generator {
 	/**
 	 * Builds the Kainos.lt XML document.
 	 *
-	 * @param array<int,array<string,string|int>> $products Products to write.
+	 * @param array<int,array<string,mixed>> $products Products to write.
 	 * @return string
 	 */
 	private function build_xml( $products ) {
@@ -239,11 +463,20 @@ class WKLF_Feed_Generator {
 			$xml->startElement( 'product' );
 			$xml->writeAttribute( 'id', (string) $product['id'] );
 
-			foreach ( array( 'title', 'item_price', 'image_url', 'product_url', 'categories', 'stock' ) as $field ) {
-				$xml->startElement( $field );
-				$xml->writeCdata( (string) $product[ $field ] );
-				$xml->endElement();
+			foreach ( array( 'title', 'item_price', 'manufacturer', 'image_url', 'product_url' ) as $field ) {
+				$this->write_cdata_element( $xml, $field, (string) $product[ $field ] );
 			}
+
+			$xml->startElement( 'categories' );
+			foreach ( $product['categories'] as $category ) {
+				$this->write_cdata_element( $xml, 'category', (string) $category );
+			}
+			$xml->endElement();
+
+			$this->write_cdata_element( $xml, 'description', (string) $product['description'] );
+			$this->write_cdata_element( $xml, 'stock', (string) $product['stock'] );
+			$xml->writeElement( 'delivery_time', (string) absint( $product['delivery_time'] ) );
+			$this->write_cdata_element( $xml, 'delivery_text', (string) $product['delivery_text'] );
 
 			$xml->endElement();
 		}
@@ -252,6 +485,20 @@ class WKLF_Feed_Generator {
 		$xml->endDocument();
 
 		return $xml->outputMemory();
+	}
+
+	/**
+	 * Writes a CDATA element.
+	 *
+	 * @param XMLWriter $xml   XML writer.
+	 * @param string    $name  Element name.
+	 * @param string    $value Element value.
+	 * @return void
+	 */
+	private function write_cdata_element( $xml, $name, $value ) {
+		$xml->startElement( $name );
+		$xml->writeCdata( $value );
+		$xml->endElement();
 	}
 
 	/**

@@ -25,6 +25,7 @@ define( 'WKLF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'WKLF_CRON_HOOK', 'wklf_generate_feed_event' );
 define( 'WKLF_STATUS_OPTION', 'wklf_feed_status' );
 define( 'WKLF_LOG_OPTION', 'wklf_feed_log' );
+define( 'WKLF_SETTINGS_OPTION', 'wklf_feed_settings' );
 
 require_once WKLF_PLUGIN_DIR . 'includes/class-wklf-plugin.php';
 require_once WKLF_PLUGIN_DIR . 'includes/class-wklf-feed-generator.php';

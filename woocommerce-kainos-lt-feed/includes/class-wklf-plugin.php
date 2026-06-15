@@ -81,6 +81,7 @@ class WKLF_Plugin {
 	public static function activate() {
 		self::schedule_cron();
 		WKLF_Feed_Generator::ensure_default_status();
+		WKLF_Feed_Generator::ensure_default_settings();
 		WKLF_Feed_Generator::log( __( 'Plugin activated and Kainos.lt feed cron scheduled.', 'woocommerce-kainos-lt-feed' ) );
 	}
 
