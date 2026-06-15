@@ -68,28 +68,11 @@ class WKLF_Admin {
 
 		check_admin_referer( 'wklf_save_settings', 'wklf_settings_nonce' );
 
-		$source          = isset( $_POST['manufacturer_source'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_source'] ) ) : 'fixed_value';
-		$allowed_sources = array( 'fixed_value', 'product_attribute', 'product_meta' );
-
-		if ( ! in_array( $source, $allowed_sources, true ) ) {
-			$source = 'fixed_value';
-		}
-
 		$delivery_text = isset( $_POST['delivery_text'] ) ? sanitize_text_field( wp_unslash( $_POST['delivery_text'] ) ) : '0 - 2 d.d.';
 		if ( function_exists( 'mb_substr' ) ) {
 			$delivery_text = mb_substr( $delivery_text, 0, 22, 'UTF-8' );
 		} else {
 			$delivery_text = substr( $delivery_text, 0, 22 );
-		}
-
-		$ean_source = isset( $_POST['ean_source'] ) ? sanitize_key( wp_unslash( $_POST['ean_source'] ) ) : 'product_meta';
-		if ( ! in_array( $ean_source, array( 'product_meta', 'product_attribute' ), true ) ) {
-			$ean_source = 'product_meta';
-		}
-
-		$manufacturer_code_source = isset( $_POST['manufacturer_code_source'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_code_source'] ) ) : 'sku';
-		if ( ! in_array( $manufacturer_code_source, array( 'product_meta', 'sku' ), true ) ) {
-			$manufacturer_code_source = 'sku';
 		}
 
 		$model_source = isset( $_POST['model_source'] ) ? sanitize_key( wp_unslash( $_POST['model_source'] ) ) : 'product_title';
@@ -103,17 +86,17 @@ class WKLF_Admin {
 		}
 
 		$settings = array(
-			'manufacturer_source'         => $source,
-			'fixed_manufacturer_value'    => isset( $_POST['fixed_manufacturer_value'] ) ? sanitize_text_field( wp_unslash( $_POST['fixed_manufacturer_value'] ) ) : '',
-			'manufacturer_attribute_slug' => isset( $_POST['manufacturer_attribute_slug'] ) ? sanitize_title( wp_unslash( $_POST['manufacturer_attribute_slug'] ) ) : '',
-			'manufacturer_meta_key'       => isset( $_POST['manufacturer_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_meta_key'] ) ) : '',
+			'manufacturer_source'         => 'fixed_value',
+			'fixed_manufacturer_value'    => WKLF_Feed_Generator::DEFAULT_MANUFACTURER,
+			'manufacturer_attribute_slug' => '',
+			'manufacturer_meta_key'       => '',
 			'delivery_time'               => isset( $_POST['delivery_time'] ) ? max( 0, absint( $_POST['delivery_time'] ) ) : 2,
 			'delivery_text'               => $delivery_text,
-			'ean_source'                  => $ean_source,
+			'ean_source'                  => 'woocommerce_gtin',
 			'ean_meta_key'                => isset( $_POST['ean_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['ean_meta_key'] ) ) : '',
-			'ean_attribute_slug'          => isset( $_POST['ean_attribute_slug'] ) ? sanitize_title( wp_unslash( $_POST['ean_attribute_slug'] ) ) : '',
-			'manufacturer_code_source'    => $manufacturer_code_source,
-			'manufacturer_code_meta_key'  => isset( $_POST['manufacturer_code_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_code_meta_key'] ) ) : '',
+			'ean_attribute_slug'          => '',
+			'manufacturer_code_source'    => 'sku',
+			'manufacturer_code_meta_key'  => '',
 			'model_source'                => $model_source,
 			'model_meta_key'              => isset( $_POST['model_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['model_meta_key'] ) ) : '',
 			'export_products'             => $export_products,
@@ -211,57 +194,22 @@ class WKLF_Admin {
 				<?php wp_nonce_field( 'wklf_save_settings', 'wklf_settings_nonce' ); ?>
 				<table class="form-table" role="presentation">
 					<tr>
-						<th scope="row"><label for="manufacturer_source"><?php echo esc_html__( 'Manufacturer source', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td>
-							<select id="manufacturer_source" name="manufacturer_source">
-								<option value="fixed_value" <?php selected( $settings['manufacturer_source'], 'fixed_value' ); ?>><?php echo esc_html__( 'Fixed value', 'woocommerce-kainos-lt-feed' ); ?></option>
-								<option value="product_attribute" <?php selected( $settings['manufacturer_source'], 'product_attribute' ); ?>><?php echo esc_html__( 'Product attribute', 'woocommerce-kainos-lt-feed' ); ?></option>
-								<option value="product_meta" <?php selected( $settings['manufacturer_source'], 'product_meta' ); ?>><?php echo esc_html__( 'Product meta', 'woocommerce-kainos-lt-feed' ); ?></option>
-							</select>
-						</td>
-					</tr>
-					<tr>
 						<th scope="row"><label for="fixed_manufacturer_value"><?php echo esc_html__( 'Fixed manufacturer value', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td><input type="text" class="regular-text" id="fixed_manufacturer_value" name="fixed_manufacturer_value" value="<?php echo esc_attr( $settings['fixed_manufacturer_value'] ); ?>" /></td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="manufacturer_attribute_slug"><?php echo esc_html__( 'Manufacturer attribute slug', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td><input type="text" class="regular-text" id="manufacturer_attribute_slug" name="manufacturer_attribute_slug" value="<?php echo esc_attr( $settings['manufacturer_attribute_slug'] ); ?>" placeholder="pa_brand" /></td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="manufacturer_meta_key"><?php echo esc_html__( 'Manufacturer meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td><input type="text" class="regular-text" id="manufacturer_meta_key" name="manufacturer_meta_key" value="<?php echo esc_attr( $settings['manufacturer_meta_key'] ); ?>" /></td>
-					</tr>
-
-					<tr>
-						<th scope="row"><label for="ean_source"><?php echo esc_html__( 'EAN source', 'woocommerce-kainos-lt-feed' ); ?></label></th>
 						<td>
-							<select id="ean_source" name="ean_source">
-								<option value="product_meta" <?php selected( $settings['ean_source'], 'product_meta' ); ?>><?php echo esc_html__( 'Product meta', 'woocommerce-kainos-lt-feed' ); ?></option>
-								<option value="product_attribute" <?php selected( $settings['ean_source'], 'product_attribute' ); ?>><?php echo esc_html__( 'Product attribute', 'woocommerce-kainos-lt-feed' ); ?></option>
-							</select>
+							<code><?php echo esc_html( WKLF_Feed_Generator::DEFAULT_MANUFACTURER ); ?></code>
+							<p class="description"><?php echo esc_html__( 'This fixed value is exported for every product manufacturer and cannot be changed here.', 'woocommerce-kainos-lt-feed' ); ?></p>
 						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php echo esc_html__( 'Manufacturer code source', 'woocommerce-kainos-lt-feed' ); ?></th>
+						<td><?php echo esc_html__( 'WooCommerce SKU', 'woocommerce-kainos-lt-feed' ); ?></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="ean_meta_key"><?php echo esc_html__( 'EAN meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td><input type="text" class="regular-text" id="ean_meta_key" name="ean_meta_key" value="<?php echo esc_attr( $settings['ean_meta_key'] ); ?>" /></td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="ean_attribute_slug"><?php echo esc_html__( 'EAN attribute slug', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td><input type="text" class="regular-text" id="ean_attribute_slug" name="ean_attribute_slug" value="<?php echo esc_attr( $settings['ean_attribute_slug'] ); ?>" placeholder="pa_ean" /></td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="manufacturer_code_source"><?php echo esc_html__( 'Manufacturer code source', 'woocommerce-kainos-lt-feed' ); ?></label></th>
 						<td>
-							<select id="manufacturer_code_source" name="manufacturer_code_source">
-								<option value="sku" <?php selected( $settings['manufacturer_code_source'], 'sku' ); ?>><?php echo esc_html__( 'SKU', 'woocommerce-kainos-lt-feed' ); ?></option>
-								<option value="product_meta" <?php selected( $settings['manufacturer_code_source'], 'product_meta' ); ?>><?php echo esc_html__( 'Product meta', 'woocommerce-kainos-lt-feed' ); ?></option>
-							</select>
+							<input type="text" class="regular-text" id="ean_meta_key" name="ean_meta_key" value="<?php echo esc_attr( $settings['ean_meta_key'] ); ?>" />
+							<p class="description"><?php echo esc_html__( 'Used only when the WooCommerce product GTIN field is empty.', 'woocommerce-kainos-lt-feed' ); ?></p>
 						</td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="manufacturer_code_meta_key"><?php echo esc_html__( 'Manufacturer code meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
-						<td><input type="text" class="regular-text" id="manufacturer_code_meta_key" name="manufacturer_code_meta_key" value="<?php echo esc_attr( $settings['manufacturer_code_meta_key'] ); ?>" /></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="model_source"><?php echo esc_html__( 'Model source', 'woocommerce-kainos-lt-feed' ); ?></label></th>

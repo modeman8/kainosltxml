@@ -14,6 +14,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class WKLF_Feed_Generator {
 	/**
+	 * Fixed manufacturer exported for every product.
+	 *
+	 * @var string
+	 */
+	const DEFAULT_MANUFACTURER = 'Mokytoja Veronika';
+
+	/**
 	 * Feed subdirectory inside uploads.
 	 *
 	 * @var string
@@ -35,12 +42,12 @@ class WKLF_Feed_Generator {
 	public static function get_default_settings() {
 		return array(
 			'manufacturer_source'         => 'fixed_value',
-			'fixed_manufacturer_value'    => '',
+			'fixed_manufacturer_value'    => self::DEFAULT_MANUFACTURER,
 			'manufacturer_attribute_slug' => '',
 			'manufacturer_meta_key'       => '',
 			'delivery_time'               => 2,
 			'delivery_text'               => '0 - 2 d.d.',
-			'ean_source'                  => 'product_meta',
+			'ean_source'                  => 'woocommerce_gtin',
 			'ean_meta_key'                => '',
 			'ean_attribute_slug'          => '',
 			'manufacturer_code_source'    => 'sku',
@@ -208,7 +215,7 @@ class WKLF_Feed_Generator {
 			'id'                => $product->get_id(),
 			'title'             => $title,
 			'item_price'        => $this->format_price( wc_get_price_to_display( $product ) ),
-			'manufacturer'      => $this->get_manufacturer( $product, $parent ),
+			'manufacturer'      => $this->get_manufacturer(),
 			'ean_code'          => $this->get_ean_code( $product, $parent ),
 			'manufacturer_code' => $this->get_manufacturer_code( $product, $parent ),
 			'model'             => $this->get_model( $product, $parent, $title ),
@@ -234,68 +241,69 @@ class WKLF_Feed_Generator {
 	}
 
 	/**
-	 * Gets manufacturer according to admin settings.
+	 * Gets the fixed manufacturer value.
 	 *
-	 * @param WC_Product      $product Product or variation.
-	 * @param WC_Product|null $parent  Parent product for variations.
 	 * @return string
 	 */
-	private function get_manufacturer( $product, $parent = null ) {
-		$settings = self::get_settings();
-		$source   = isset( $settings['manufacturer_source'] ) ? (string) $settings['manufacturer_source'] : 'fixed_value';
-		$value    = '';
-
-		if ( 'product_attribute' === $source && ! empty( $settings['manufacturer_attribute_slug'] ) ) {
-			$value = $this->get_attribute_value( $product, $parent, (string) $settings['manufacturer_attribute_slug'] );
-		} elseif ( 'product_meta' === $source && ! empty( $settings['manufacturer_meta_key'] ) ) {
-			$value = $this->get_meta_value( $product, $parent, (string) $settings['manufacturer_meta_key'] );
-		} elseif ( ! empty( $settings['fixed_manufacturer_value'] ) ) {
-			$value = (string) $settings['fixed_manufacturer_value'];
-		}
-
-		$value = $this->plain_text( $value );
-
-		return '' !== $value ? $value : get_bloginfo( 'name' );
+	private function get_manufacturer() {
+		return $this->plain_text( self::DEFAULT_MANUFACTURER );
 	}
 
 	/**
-	 * Gets EAN code according to admin settings.
+	 * Gets EAN code from the WooCommerce GTIN field or configured product meta.
 	 *
 	 * @param WC_Product      $product Product or variation.
 	 * @param WC_Product|null $parent  Parent product for variations.
 	 * @return string
 	 */
 	private function get_ean_code( $product, $parent = null ) {
-		$settings = self::get_settings();
-		$value    = '';
+		$value = $this->get_woocommerce_gtin( $product );
 
-		if ( 'product_attribute' === $settings['ean_source'] && ! empty( $settings['ean_attribute_slug'] ) ) {
-			$value = $this->get_attribute_value( $product, $parent, (string) $settings['ean_attribute_slug'] );
-		} elseif ( ! empty( $settings['ean_meta_key'] ) ) {
-			$value = $this->get_meta_value( $product, $parent, (string) $settings['ean_meta_key'] );
+		if ( '' === $value && $parent ) {
+			$value = $this->get_woocommerce_gtin( $parent );
+		}
+
+		if ( '' === $value ) {
+			$settings = self::get_settings();
+			if ( ! empty( $settings['ean_meta_key'] ) ) {
+				$value = $this->get_meta_value( $product, $parent, (string) $settings['ean_meta_key'] );
+			}
 		}
 
 		return $this->plain_text( $value );
 	}
 
 	/**
-	 * Gets manufacturer code according to admin settings.
+	 * Gets WooCommerce's native GTIN/global unique ID value when available.
+	 *
+	 * @param WC_Product $product Product or variation.
+	 * @return string
+	 */
+	private function get_woocommerce_gtin( $product ) {
+		if ( method_exists( $product, 'get_global_unique_id' ) ) {
+			$value = $product->get_global_unique_id();
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				return (string) $value;
+			}
+		}
+
+		$value = get_post_meta( $product->get_id(), '_global_unique_id', true );
+		if ( is_scalar( $value ) && '' !== (string) $value ) {
+			return (string) $value;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Gets manufacturer code from the WooCommerce SKU.
 	 *
 	 * @param WC_Product      $product Product or variation.
 	 * @param WC_Product|null $parent  Parent product for variations.
 	 * @return string
 	 */
 	private function get_manufacturer_code( $product, $parent = null ) {
-		$settings = self::get_settings();
-		$value    = '';
-
-		if ( 'product_meta' === $settings['manufacturer_code_source'] && ! empty( $settings['manufacturer_code_meta_key'] ) ) {
-			$value = $this->get_meta_value( $product, $parent, (string) $settings['manufacturer_code_meta_key'] );
-		} else {
-			$value = $product->get_sku();
-		}
-
-		return $this->plain_text( $value );
+		return $this->plain_text( $product->get_sku() );
 	}
 
 	/**
