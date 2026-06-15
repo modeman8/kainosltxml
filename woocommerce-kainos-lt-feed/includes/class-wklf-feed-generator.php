@@ -40,6 +40,14 @@ class WKLF_Feed_Generator {
 			'manufacturer_meta_key'       => '',
 			'delivery_time'               => 2,
 			'delivery_text'               => '0 - 2 d.d.',
+			'ean_source'                  => 'product_meta',
+			'ean_meta_key'                => '',
+			'ean_attribute_slug'          => '',
+			'manufacturer_code_source'    => 'sku',
+			'manufacturer_code_meta_key'  => '',
+			'model_source'                => 'product_title',
+			'model_meta_key'              => '',
+			'export_products'             => 'all',
 		);
 	}
 
@@ -134,9 +142,15 @@ class WKLF_Feed_Generator {
 				)
 			);
 
+			$settings = self::get_settings();
+
 			foreach ( $query->products as $product ) {
 				if ( $product->is_type( 'variable' ) ) {
 					$export_products = array_merge( $export_products, $this->get_variation_export_products( $product ) );
+					continue;
+				}
+
+				if ( 'in_stock' === $settings['export_products'] && ! $product->is_in_stock() ) {
 					continue;
 				}
 
@@ -158,10 +172,16 @@ class WKLF_Feed_Generator {
 	private function get_variation_export_products( $product ) {
 		$export_products = array();
 
+		$settings = self::get_settings();
+
 		foreach ( $product->get_children() as $variation_id ) {
 			$variation = wc_get_product( $variation_id );
 
 			if ( ! $variation || 'publish' !== $variation->get_status() ) {
+				continue;
+			}
+
+			if ( 'in_stock' === $settings['export_products'] && ! $variation->is_in_stock() ) {
 				continue;
 			}
 
@@ -182,18 +202,24 @@ class WKLF_Feed_Generator {
 		$category_product = $parent ? $parent : $product;
 		$settings         = self::get_settings();
 
+		$title = $parent ? $this->get_variation_title( $parent, $product ) : $product->get_name();
+
 		return array(
-			'id'             => $product->get_id(),
-			'title'          => $parent ? $this->get_variation_title( $parent, $product ) : $product->get_name(),
-			'item_price'     => $this->format_price( wc_get_price_to_display( $product ) ),
-			'manufacturer'   => $this->get_manufacturer( $product, $parent ),
-			'image_url'      => $this->get_product_image_url( $product, $parent ),
-			'product_url'    => $this->get_product_url( $product, $parent ),
-			'categories'     => $this->get_category_paths( $category_product->get_id() ),
-			'description'    => $this->get_product_description( $parent ? $parent : $product ),
-			'stock'          => $this->get_stock_value( $product ),
-			'delivery_time'  => absint( $settings['delivery_time'] ),
-			'delivery_text'  => $this->trim_text( (string) $settings['delivery_text'], 22 ),
+			'id'                => $product->get_id(),
+			'title'             => $title,
+			'item_price'        => $this->format_price( wc_get_price_to_display( $product ) ),
+			'manufacturer'      => $this->get_manufacturer( $product, $parent ),
+			'ean_code'          => $this->get_ean_code( $product, $parent ),
+			'manufacturer_code' => $this->get_manufacturer_code( $product, $parent ),
+			'model'             => $this->get_model( $product, $parent, $title ),
+			'image_url'         => $this->get_product_image_url( $product, $parent ),
+			'additional_images' => $this->get_additional_image_urls( $product, $parent ),
+			'product_url'       => $this->get_product_url( $product, $parent ),
+			'categories'        => $this->get_category_paths( $category_product->get_id() ),
+			'description'       => $this->get_product_description( $parent ? $parent : $product ),
+			'stock'             => $this->get_stock_value( $product ),
+			'delivery_time'     => absint( $settings['delivery_time'] ),
+			'delivery_text'     => $this->trim_text( (string) $settings['delivery_text'], 22 ),
 		);
 	}
 
@@ -230,6 +256,67 @@ class WKLF_Feed_Generator {
 		$value = $this->plain_text( $value );
 
 		return '' !== $value ? $value : get_bloginfo( 'name' );
+	}
+
+	/**
+	 * Gets EAN code according to admin settings.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @return string
+	 */
+	private function get_ean_code( $product, $parent = null ) {
+		$settings = self::get_settings();
+		$value    = '';
+
+		if ( 'product_attribute' === $settings['ean_source'] && ! empty( $settings['ean_attribute_slug'] ) ) {
+			$value = $this->get_attribute_value( $product, $parent, (string) $settings['ean_attribute_slug'] );
+		} elseif ( ! empty( $settings['ean_meta_key'] ) ) {
+			$value = $this->get_meta_value( $product, $parent, (string) $settings['ean_meta_key'] );
+		}
+
+		return $this->plain_text( $value );
+	}
+
+	/**
+	 * Gets manufacturer code according to admin settings.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @return string
+	 */
+	private function get_manufacturer_code( $product, $parent = null ) {
+		$settings = self::get_settings();
+		$value    = '';
+
+		if ( 'product_meta' === $settings['manufacturer_code_source'] && ! empty( $settings['manufacturer_code_meta_key'] ) ) {
+			$value = $this->get_meta_value( $product, $parent, (string) $settings['manufacturer_code_meta_key'] );
+		} else {
+			$value = $product->get_sku();
+		}
+
+		return $this->plain_text( $value );
+	}
+
+	/**
+	 * Gets model according to admin settings.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @param string          $title   Product title.
+	 * @return string
+	 */
+	private function get_model( $product, $parent, $title ) {
+		$settings = self::get_settings();
+		$value    = $title;
+
+		if ( 'sku' === $settings['model_source'] ) {
+			$value = $product->get_sku();
+		} elseif ( 'product_meta' === $settings['model_source'] && ! empty( $settings['model_meta_key'] ) ) {
+			$value = $this->get_meta_value( $product, $parent, (string) $settings['model_meta_key'] );
+		}
+
+		return $this->plain_text( $value );
 	}
 
 	/**
@@ -345,6 +432,40 @@ class WKLF_Feed_Generator {
 		}
 
 		return $image_id ? wp_get_attachment_url( $image_id ) : '';
+	}
+
+	/**
+	 * Gets additional gallery image URLs, excluding the main product image.
+	 *
+	 * @param WC_Product      $product Product or variation.
+	 * @param WC_Product|null $parent  Parent product for variations.
+	 * @return array<int,string>
+	 */
+	private function get_additional_image_urls( $product, $parent = null ) {
+		$main_image_id = $product->get_image_id();
+		$image_ids     = method_exists( $product, 'get_gallery_image_ids' ) ? $product->get_gallery_image_ids() : array();
+
+		if ( empty( $image_ids ) && $parent ) {
+			$image_ids = method_exists( $parent, 'get_gallery_image_ids' ) ? $parent->get_gallery_image_ids() : array();
+		}
+
+		if ( ! $main_image_id && $parent ) {
+			$main_image_id = $parent->get_image_id();
+		}
+
+		$urls = array();
+		foreach ( array_unique( array_map( 'absint', $image_ids ) ) as $image_id ) {
+			if ( ! $image_id || $image_id === (int) $main_image_id ) {
+				continue;
+			}
+
+			$url = wp_get_attachment_url( $image_id );
+			if ( $url ) {
+				$urls[] = esc_url_raw( $url );
+			}
+		}
+
+		return array_values( array_unique( $urls ) );
 	}
 
 	/**
@@ -467,6 +588,18 @@ class WKLF_Feed_Generator {
 				$this->write_cdata_element( $xml, $field, (string) $product[ $field ] );
 			}
 
+			foreach ( array( 'ean_code', 'manufacturer_code', 'model' ) as $field ) {
+				$this->write_optional_cdata_element( $xml, $field, (string) $product[ $field ] );
+			}
+
+			if ( ! empty( $product['additional_images'] ) ) {
+				$xml->startElement( 'additional_images' );
+				foreach ( $product['additional_images'] as $image_url ) {
+					$this->write_cdata_element( $xml, 'image', (string) $image_url );
+				}
+				$xml->endElement();
+			}
+
 			$xml->startElement( 'categories' );
 			foreach ( $product['categories'] as $category ) {
 				$this->write_cdata_element( $xml, 'category', (string) $category );
@@ -496,9 +629,28 @@ class WKLF_Feed_Generator {
 	 * @return void
 	 */
 	private function write_cdata_element( $xml, $name, $value ) {
+		$value = function_exists( 'wp_check_invalid_utf8' ) ? wp_check_invalid_utf8( $value, true ) : $value;
+		$value = str_replace( ']]>', ']]]]><![CDATA[>', $value );
+
 		$xml->startElement( $name );
-		$xml->writeCdata( $value );
+		$xml->writeRaw( '<![CDATA[' . $value . ']]>' );
 		$xml->endElement();
+	}
+
+	/**
+	 * Writes a CDATA element only when value is not empty.
+	 *
+	 * @param XMLWriter $xml   XML writer.
+	 * @param string    $name  Element name.
+	 * @param string    $value Element value.
+	 * @return void
+	 */
+	private function write_optional_cdata_element( $xml, $name, $value ) {
+		if ( '' === $value ) {
+			return;
+		}
+
+		$this->write_cdata_element( $xml, $name, $value );
 	}
 
 	/**

@@ -82,6 +82,26 @@ class WKLF_Admin {
 			$delivery_text = substr( $delivery_text, 0, 22 );
 		}
 
+		$ean_source = isset( $_POST['ean_source'] ) ? sanitize_key( wp_unslash( $_POST['ean_source'] ) ) : 'product_meta';
+		if ( ! in_array( $ean_source, array( 'product_meta', 'product_attribute' ), true ) ) {
+			$ean_source = 'product_meta';
+		}
+
+		$manufacturer_code_source = isset( $_POST['manufacturer_code_source'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_code_source'] ) ) : 'sku';
+		if ( ! in_array( $manufacturer_code_source, array( 'product_meta', 'sku' ), true ) ) {
+			$manufacturer_code_source = 'sku';
+		}
+
+		$model_source = isset( $_POST['model_source'] ) ? sanitize_key( wp_unslash( $_POST['model_source'] ) ) : 'product_title';
+		if ( ! in_array( $model_source, array( 'product_title', 'sku', 'product_meta' ), true ) ) {
+			$model_source = 'product_title';
+		}
+
+		$export_products = isset( $_POST['export_products'] ) ? sanitize_key( wp_unslash( $_POST['export_products'] ) ) : 'all';
+		if ( ! in_array( $export_products, array( 'all', 'in_stock' ), true ) ) {
+			$export_products = 'all';
+		}
+
 		$settings = array(
 			'manufacturer_source'         => $source,
 			'fixed_manufacturer_value'    => isset( $_POST['fixed_manufacturer_value'] ) ? sanitize_text_field( wp_unslash( $_POST['fixed_manufacturer_value'] ) ) : '',
@@ -89,6 +109,14 @@ class WKLF_Admin {
 			'manufacturer_meta_key'       => isset( $_POST['manufacturer_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_meta_key'] ) ) : '',
 			'delivery_time'               => isset( $_POST['delivery_time'] ) ? max( 0, absint( $_POST['delivery_time'] ) ) : 2,
 			'delivery_text'               => $delivery_text,
+			'ean_source'                  => $ean_source,
+			'ean_meta_key'                => isset( $_POST['ean_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['ean_meta_key'] ) ) : '',
+			'ean_attribute_slug'          => isset( $_POST['ean_attribute_slug'] ) ? sanitize_title( wp_unslash( $_POST['ean_attribute_slug'] ) ) : '',
+			'manufacturer_code_source'    => $manufacturer_code_source,
+			'manufacturer_code_meta_key'  => isset( $_POST['manufacturer_code_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['manufacturer_code_meta_key'] ) ) : '',
+			'model_source'                => $model_source,
+			'model_meta_key'              => isset( $_POST['model_meta_key'] ) ? sanitize_key( wp_unslash( $_POST['model_meta_key'] ) ) : '',
+			'export_products'             => $export_products,
 		);
 
 		update_option( WKLF_SETTINGS_OPTION, $settings, false );
@@ -203,6 +231,60 @@ class WKLF_Admin {
 					<tr>
 						<th scope="row"><label for="manufacturer_meta_key"><?php echo esc_html__( 'Manufacturer meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
 						<td><input type="text" class="regular-text" id="manufacturer_meta_key" name="manufacturer_meta_key" value="<?php echo esc_attr( $settings['manufacturer_meta_key'] ); ?>" /></td>
+					</tr>
+
+					<tr>
+						<th scope="row"><label for="ean_source"><?php echo esc_html__( 'EAN source', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td>
+							<select id="ean_source" name="ean_source">
+								<option value="product_meta" <?php selected( $settings['ean_source'], 'product_meta' ); ?>><?php echo esc_html__( 'Product meta', 'woocommerce-kainos-lt-feed' ); ?></option>
+								<option value="product_attribute" <?php selected( $settings['ean_source'], 'product_attribute' ); ?>><?php echo esc_html__( 'Product attribute', 'woocommerce-kainos-lt-feed' ); ?></option>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="ean_meta_key"><?php echo esc_html__( 'EAN meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td><input type="text" class="regular-text" id="ean_meta_key" name="ean_meta_key" value="<?php echo esc_attr( $settings['ean_meta_key'] ); ?>" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="ean_attribute_slug"><?php echo esc_html__( 'EAN attribute slug', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td><input type="text" class="regular-text" id="ean_attribute_slug" name="ean_attribute_slug" value="<?php echo esc_attr( $settings['ean_attribute_slug'] ); ?>" placeholder="pa_ean" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="manufacturer_code_source"><?php echo esc_html__( 'Manufacturer code source', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td>
+							<select id="manufacturer_code_source" name="manufacturer_code_source">
+								<option value="sku" <?php selected( $settings['manufacturer_code_source'], 'sku' ); ?>><?php echo esc_html__( 'SKU', 'woocommerce-kainos-lt-feed' ); ?></option>
+								<option value="product_meta" <?php selected( $settings['manufacturer_code_source'], 'product_meta' ); ?>><?php echo esc_html__( 'Product meta', 'woocommerce-kainos-lt-feed' ); ?></option>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="manufacturer_code_meta_key"><?php echo esc_html__( 'Manufacturer code meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td><input type="text" class="regular-text" id="manufacturer_code_meta_key" name="manufacturer_code_meta_key" value="<?php echo esc_attr( $settings['manufacturer_code_meta_key'] ); ?>" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="model_source"><?php echo esc_html__( 'Model source', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td>
+							<select id="model_source" name="model_source">
+								<option value="product_title" <?php selected( $settings['model_source'], 'product_title' ); ?>><?php echo esc_html__( 'Product title', 'woocommerce-kainos-lt-feed' ); ?></option>
+								<option value="sku" <?php selected( $settings['model_source'], 'sku' ); ?>><?php echo esc_html__( 'SKU', 'woocommerce-kainos-lt-feed' ); ?></option>
+								<option value="product_meta" <?php selected( $settings['model_source'], 'product_meta' ); ?>><?php echo esc_html__( 'Product meta', 'woocommerce-kainos-lt-feed' ); ?></option>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="model_meta_key"><?php echo esc_html__( 'Model meta key', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td><input type="text" class="regular-text" id="model_meta_key" name="model_meta_key" value="<?php echo esc_attr( $settings['model_meta_key'] ); ?>" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="export_products"><?php echo esc_html__( 'Export products', 'woocommerce-kainos-lt-feed' ); ?></label></th>
+						<td>
+							<select id="export_products" name="export_products">
+								<option value="all" <?php selected( $settings['export_products'], 'all' ); ?>><?php echo esc_html__( 'All products', 'woocommerce-kainos-lt-feed' ); ?></option>
+								<option value="in_stock" <?php selected( $settings['export_products'], 'in_stock' ); ?>><?php echo esc_html__( 'Only in-stock products', 'woocommerce-kainos-lt-feed' ); ?></option>
+							</select>
+						</td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="delivery_time"><?php echo esc_html__( 'Delivery time in days', 'woocommerce-kainos-lt-feed' ); ?></label></th>
